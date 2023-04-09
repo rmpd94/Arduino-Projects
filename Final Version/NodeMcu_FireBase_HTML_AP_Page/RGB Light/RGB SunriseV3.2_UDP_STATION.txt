@@ -1,0 +1,558 @@
+#include <ESP8266WiFi.h>
+#include <WiFiUdp.h>
+#include <ESP8266WebServer.h>
+#include <ArduinoJson.h>
+
+//ESP8266WebServer server;
+char* mySsid   = "TP-LINK-191";
+char* password = "Paradise";
+ESP8266WebServer server(80);
+int pinArray[] = {14, 12, 13, 15, 4};
+unsigned long sMils = 0;
+unsigned long pMils = 0;
+//Mode 1- Manual, 2-Automatic
+int dmode;
+// Manual Intensities
+int ir;
+int ig;
+int iw;
+int ib;
+//Sunrise Sunset Timings
+int mr; //Max
+int mg; //Max
+int mb;//Max
+int mw;//Max
+int sr; //Starting
+int sg; //Starting
+int sb;//Starting
+int sw;//Starting
+int rmt;   //Sunrise time
+int slt; //Sunset time
+int tot; // Total Time
+//Demo
+  int dmr;
+  int dmg;
+  int dmb;
+  int dmw;
+  int dsr;
+  int dsg;
+  int dsb;
+  int dsw;
+  int drmt;
+  int dslt;
+  int dtot;
+  int dmotot = 60000;
+unsigned int localPort = 8888;      // local port to listen on
+
+// buffers for receiving and sending data
+char packetBuffer[UDP_TX_PACKET_MAX_SIZE + 1]; //buffer to hold incoming packet,
+char  ReplyBuffer[] = "acknowledged\r\n";       // a string to send back
+
+WiFiUDP Udp;
+
+void setup()
+{
+  Serial.begin(9600);
+
+  pinMode(pinArray[0], OUTPUT);
+  pinMode(pinArray[1], OUTPUT);
+  pinMode(pinArray[2], OUTPUT);
+  pinMode(pinArray[3], OUTPUT);
+  pinMode(pinArray[4], OUTPUT);
+  SPIFFS.begin();
+  syncStatus();
+  WiFi.softAPdisconnect(true);
+  WiFi.disconnect();  
+  server.close();        
+  delay(1000);  
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(mySsid, password);
+     if (WiFi.waitForConnectResult() != WL_CONNECTED) {
+    Serial.println("WiFi Connect Failed! Rebooting...");
+    delay(1000);
+    ESP.restart();
+  }
+    IPAddress IP = WiFi.localIP();
+   Serial.print("AP IP address: ");
+   Serial.println(IP);
+    delay(1000);
+    //server.on("/",[](){server.send_P(200,"text/html", webpage);});
+ // server.on("/slidervalue", HTTP_POST, getData);
+  server.on("/getAutoSet", HTTP_GET, getAutoSet);
+  server.on("/getMode", HTTP_GET, getMode);
+  server.on("/getRGB", HTTP_GET, getRGB);
+  server.on("/saveModStngs", HTTP_POST, saveModStngs);
+  server.on("/saveAutStngs", HTTP_POST, saveAutStngs);
+  server.on("/saveManStngs", HTTP_POST, saveManStngs);
+  server.on("/showDemo", HTTP_POST, showDemo);
+  
+    server.begin(); 
+	Udp.begin(localPort);
+    delay(1000);  
+sMils = millis();
+}
+void loop()
+{  
+if (dmode == 2){
+//if (millis() - pMils > 500 || pMils == 0) {
+  pMils = millis();
+  autoMode(pMils - sMils);
+//} 
+delay(100);
+}
+if (dmode == 1){
+	receiveUdpReq();
+    analogWrite(pinArray[0], ir);
+    analogWrite(pinArray[1], ig);
+    analogWrite(pinArray[2], ib);
+    analogWrite(pinArray[3], iw);
+    analogWrite(pinArray[4], iw);
+//delay(10);	
+}
+server.handleClient();
+}
+/*void getData()
+{
+  String data = server.arg("plain");
+  DynamicJsonBuffer jBuffer;
+  JsonObject& jObject = jBuffer.parseObject(data);
+      if(jObject.success())
+      {     
+    int red  = jObject["R"];
+    int green = jObject["G"];
+    int blue  = jObject["B"];
+    int white  = jObject["W"]; 
+
+    analogWrite(pinArray[0], red);
+    analogWrite(pinArray[1], green);
+    analogWrite(pinArray[2], blue);
+    analogWrite(pinArray[3], white);
+    analogWrite(pinArray[4], white);
+     ir  = red;
+     ig = green;
+     ib  = blue;
+     iw  = white;
+      //analogWriteFreq(2000);
+    }  
+} */
+
+/* Send Current Status */
+void getAutoSet() {
+ String data;
+  data  = "{\"mr\" : \"";
+  data += mr;
+  data += "\", ";
+  data += "\"mg\" : \""; 
+  data += mg;
+  data += "\", ";
+  data += "\"mb\" : \""; 
+  data += mb; 
+  data += "\", ";
+  data += "\"mw\" : \""; 
+  data += mw; 
+  data += "\", ";
+  data += "\"sr\" : \""; 
+  data += sr; 
+  data += "\", ";
+  data += "\"sg\" : \""; 
+  data += sg;   
+  data += "\", ";
+  data += "\"sb\" : \""; 
+  data += sb;   
+  data += "\", ";
+  data += "\"sw\" : \""; 
+  data += sw;
+  data += "\", ";
+  data += "\"rmt\" : \""; 
+  data += rmt;   
+  data += "\", ";
+  data += "\"slt\" : \""; 
+  data += slt;  
+  data += "\", ";
+  data += "\"tot\" : \""; 
+  data += tot;
+  data += "\"}";
+  server.send(200, "application/json", data);      
+}
+
+/* Send Current Mode */
+void getMode() {
+ String data;
+  data  = "{\"mode\" : \"";
+  data += dmode;
+  data += "\"}";
+  server.send(200, "application/json", data);      
+}
+/* Send Current RGB*/
+/* Send Current Mode */
+void getRGB() {
+ String data;
+  data  = "{\"R\" : \"";
+  data += ir;
+  data += "\", ";
+  data += "\"G\" : \"";
+  data += ig;
+  data += "\", ";
+  data += "\"B\" : \""; 
+  data += ib;
+  data += "\", ";
+  data += "\"W\" : \""; 
+  data += iw;
+  data += "\"}";
+  server.send(200, "application/json", data);      
+}
+void syncStatus()
+{  
+/*Check Mode from SPIFFS */
+if(SPIFFS.exists("/modes.json")){
+    
+    File configFile = SPIFFS.open("/modes.json", "r");
+    if(configFile){
+    size_t size = configFile.size();
+      std::unique_ptr<char[]> buf(new char[size]);
+      configFile.readBytes(buf.get(), size);
+      configFile.close();
+      DynamicJsonBuffer jsonBuffer;
+      JsonObject& root = jsonBuffer.parseObject(buf.get());
+          if(root.success())
+      {
+     String smode  = root["modes"];   
+     dmode =  smode.toInt();
+    }   
+  } 
+}else {
+ // Serial.println("else");
+    dmode = 1; //Manual
+    analogWrite(pinArray[0], 255);
+    analogWrite(pinArray[1], 255);
+    analogWrite(pinArray[2], 255);
+    analogWrite(pinArray[3], 255);
+    analogWrite(pinArray[4], 255);
+  }
+/*Check manual intensities from SPIFFS */
+if(SPIFFS.exists("/mint.json")){
+    
+    File configFile = SPIFFS.open("/mint.json", "r");
+    if(configFile){
+    size_t size = configFile.size();
+      std::unique_ptr<char[]> buf(new char[size]);
+      configFile.readBytes(buf.get(), size);
+      configFile.close();
+
+      DynamicJsonBuffer jsonBuffer;
+      JsonObject& root = jsonBuffer.parseObject(buf.get());
+          if(root.success())
+      {
+      String mint = root["mint"]; 
+    setManVar(mint);
+    }   
+  } 
+}
+/*Check automatic setup from SPIFFS */
+if(SPIFFS.exists("/atsetup.json")){
+    
+    File configFile = SPIFFS.open("/atsetup.json", "r");
+    if(configFile){
+    size_t size = configFile.size();
+      std::unique_ptr<char[]> buf(new char[size]);
+      configFile.readBytes(buf.get(), size);
+      configFile.close();
+
+      DynamicJsonBuffer jsonBuffer;
+      JsonObject& root = jsonBuffer.parseObject(buf.get());
+          if(root.success())
+      {
+      String atsetup = root["atsetup"];  
+    setAutVar(atsetup);
+    }   
+  }
+}
+}
+
+String getValue(String data, char separator, int index)
+{
+    int found = 0;
+    int strIndex[] = { 0, -1 };
+    int maxIndex = data.length() - 1;
+
+    for (int i = 0; i <= maxIndex && found <= index; i++) {
+        if (data.charAt(i) == separator || i == maxIndex) {
+            found++;
+            strIndex[0] = strIndex[1] + 1;
+            strIndex[1] = (i == maxIndex) ? i+1 : i;
+        }
+    }
+    return found > index ? data.substring(strIndex[0], strIndex[1]) : "";
+}
+//* Save Manual settings */
+void saveManStngs()
+{ 
+  String data = server.arg("plain");
+  DynamicJsonBuffer jBuffer;
+  JsonObject& jObject = jBuffer.parseObject(data);
+    if(jObject.success())
+      { File configFile = SPIFFS.open("/mint.json", "w");
+    jObject.printTo(configFile);  
+    configFile.close();
+     String data  = jObject["mint"];     
+       setManVar (data);
+       server.send(200, "text/html", "Manual Setup successfully Saved");
+
+}
+}
+
+//* Save Automatic settings */
+void saveAutStngs()
+{ 
+  String data = server.arg("plain");
+  DynamicJsonBuffer jBuffer;
+  JsonObject& jObject = jBuffer.parseObject(data);
+    if(jObject.success())
+      { File configFile = SPIFFS.open("/atsetup.json", "w");
+    jObject.printTo(configFile);  
+    configFile.close();
+     String data  = jObject["atsetup"]; 
+       setAutVar(data);
+     sMils = millis();
+       server.send(200, "text/html", "Auto Settings successfully Saved");
+}
+}
+//* Save Modes settings */
+void saveModStngs()
+{ 
+  String data = server.arg("plain");
+  DynamicJsonBuffer jBuffer;
+  JsonObject& jObject = jBuffer.parseObject(data);
+  File configFile = SPIFFS.open("/modes.json", "w");
+  jObject.printTo(configFile);  
+  configFile.close();
+    if(jObject.success())
+      { 
+        String data  = jObject["modes"]; 
+        dmode =  data.toInt();
+    if(dmode == 2){sMils = millis();}
+       // Serial.println(data);
+     server.send(200, "text/html", "Mode set successfully");
+}
+}
+
+void setManVar(String input)
+{ 
+    ir = getValue(input,',', 0).toInt(); 
+    ig = getValue(input,',', 1).toInt();
+    ib = getValue(input,',', 2).toInt();
+    iw = getValue(input,',', 3).toInt();
+
+}
+void setAutVar(String input)
+{ 
+     mr = getValue(input,',', 0).toInt();
+     mg = getValue(input,',', 1).toInt();
+     mb = getValue(input,',', 2).toInt();
+     mw = getValue(input,',', 3).toInt();
+     sr = getValue(input,',', 4).toInt();
+     sg = getValue(input,',', 5).toInt();
+     sb = getValue(input,',', 6).toInt();
+     sw = getValue(input,',', 7).toInt();
+     rmt = getValue(input,',', 8).toInt();
+     slt = getValue(input,',', 9).toInt();
+     tot = getValue(input,',', 10).toInt();
+}
+int geStr(String light,String type, long ntime)
+{
+ float vmax;
+ float vmin;
+ float vinterval;
+ float returnVal;
+ int lightval;
+ //Serial.println(String(ntime));
+ if (light == "R"){vmax =float(mr) ; 
+                   vmin =float(sr);}
+ if (light == "G"){vmax =float(mg) ;
+                   vmin =float(sg); }
+ if (light == "B"){vmax =float(mb) ;
+                   vmin =float(sb);}
+ if (light == "W"){vmax =float(mw) ;
+                   vmin =float(sw);}
+ vinterval = vmax - vmin;
+ if (type == "R"){
+ returnVal = slt;
+ returnVal = vinterval/returnVal;
+ returnVal = returnVal * float(ntime);
+ lightval = round(vmax - returnVal);
+ }
+  if (type == "N"){
+ returnVal = rmt;
+ returnVal = vinterval/returnVal;
+ returnVal = returnVal * float(ntime);
+ lightval = round(returnVal + vmin );
+ }
+
+return lightval;
+
+}   
+
+void autoMode(long t) 
+{
+
+ long downt = (tot - slt) ;
+/* Sunset */
+  if (t >= downt ) {
+  ir = geStr ("R","R",(t - downt));
+  ig = geStr ("G","R",(t - downt));
+  ib = geStr ("B","R",(t - downt));
+  iw = geStr ("W","R",(t - downt));
+    }
+  
+  /* Sun Rise */
+   if (t < rmt ) {
+  ir = geStr ("R","N",t);
+  ig = geStr ("G","N",t);
+  ib =  geStr ("B","N",t);
+  iw =  geStr ("W","N",t);
+    } 
+    analogWrite(pinArray[0], ir);
+    analogWrite(pinArray[1], ig);
+    analogWrite(pinArray[2], ib);
+    analogWrite(pinArray[3], iw);
+    analogWrite(pinArray[4], iw);
+}
+
+/*Demo*/
+void showDemo(){
+ // preview = true;
+  String data = server.arg("plain");
+  DynamicJsonBuffer jBuffer;
+  JsonObject& jObject = jBuffer.parseObject(data);
+      if(jObject.success())
+      {     
+  String dval = jObject["demo"];
+   dmr = getValue(dval,',', 0).toInt();
+   dmg = getValue(dval,',', 1).toInt();
+   dmb = getValue(dval,',', 2).toInt();
+   dmw = getValue(dval,',', 3).toInt();
+   dsr = getValue(dval,',', 4).toInt();
+   dsg = getValue(dval,',', 5).toInt();
+   dsb = getValue(dval,',', 6).toInt();
+   dsw = getValue(dval,',', 7).toInt();
+   drmt = getValue(dval,',', 8).toInt();
+   dslt = getValue(dval,',', 9).toInt();
+   dtot = getValue(dval,',', 10).toInt();
+   dmotot = getValue(dval,',', 11).toInt();
+    } 
+  drmt = getDemoTime(drmt);
+  dslt = getDemoTime(dslt);
+  sMils = millis();
+  server.send(200, "text/html", "Demo Started");
+  while (1!=2 )   
+        {  
+      pMils = millis();
+      demoMode(pMils - sMils);    
+      if ( (pMils - sMils) > dmotot + 500)  {
+           break;
+        };
+        delay(50);
+       }
+   // 
+}
+
+
+
+int getDemoTime(int input){
+  float val;
+  val = float(input)/float(dtot);
+  val = val * float(dmotot);
+  return round(val);
+}
+
+int geDemoStr(String light,String type, long ntime)
+{
+ float vmax;
+ float vmin;
+ float vinterval;
+ float returnVal;
+ int lightval;
+ //Serial.println(String(ntime));
+ if (light == "R"){vmax =float(dmr) ; 
+                   vmin =float(dsr);}
+ if (light == "G"){vmax =float(dmg) ;
+                   vmin =float(dsg); }
+ if (light == "B"){vmax =float(dmb) ;
+                   vmin =float(dsb);}
+ if (light == "W"){vmax =float(dmw) ;
+                   vmin =float(dsw);}
+ vinterval = vmax - vmin;
+ if (type == "R"){
+ returnVal = dslt;
+ returnVal = vinterval/returnVal;
+ returnVal = returnVal * float(ntime);
+ lightval = round(vmax - returnVal);
+ }
+  if (type == "N"){
+ returnVal = drmt;
+ returnVal = vinterval/returnVal;
+ returnVal = returnVal * float(ntime);
+ lightval = round(returnVal + vmin );
+ }
+
+return lightval;
+
+}   
+
+void demoMode(long t) 
+{
+
+
+ long downt = (dmotot - dslt) ;
+
+/* Sunset */
+  if (t >= downt ) {
+  ir = geDemoStr ("R","R",(t - downt));
+  ig = geDemoStr ("G","R",(t - downt));
+  ib = geDemoStr ("B","R",(t - downt));
+  iw = geDemoStr ("W","R",(t - downt));
+    }
+  
+  /* Sun Rise */
+   if (t < drmt ) {
+  ir = geDemoStr ("R","N",t);
+  ig = geDemoStr ("G","N",t);
+  ib = geDemoStr ("B","N",t);
+  iw = geDemoStr ("W","N",t);
+    } 
+    analogWrite(pinArray[0], ir);
+    analogWrite(pinArray[1], ig);
+    analogWrite(pinArray[2], ib);
+    analogWrite(pinArray[3], iw);
+    analogWrite(pinArray[4], iw);
+}
+
+void receiveUdpReq() {
+	  int packetSize = Udp.parsePacket();
+  if (packetSize) {
+   /* Serial.printf("Received packet of size %d from %s:%d\n    (to %s:%d, free heap = %d B)\n",
+                  packetSize,
+                  Udp.remoteIP().toString().c_str(), Udp.remotePort(),
+                  Udp.destinationIP().toString().c_str(), Udp.localPort(),
+                  ESP.getFreeHeap()); */
+
+    // read the packet into packetBufffer
+    int n = Udp.read(packetBuffer, 800);
+    packetBuffer[n] = 0;
+  //  Serial.println("Contents:");
+  //  Serial.println(packetBuffer);
+   // do operations
+   
+     ir  = getValue(packetBuffer,',', 0).toInt();
+     ig = getValue(packetBuffer,',', 1).toInt();
+     ib  = getValue(packetBuffer,',', 2).toInt();
+     iw  = getValue(packetBuffer,',', 3).toInt();
+
+
+    // send a reply, to the IP address and port that sent us the packet we received
+   // Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
+    //Udp.write(ReplyBuffer);
+   // Udp.endPacket();
+  }
+
+}

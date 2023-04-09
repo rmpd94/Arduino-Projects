@@ -1,0 +1,65 @@
+<html>
+<head>
+</head>
+<style>
+body {background-color: powderblue;}
+h1 {text-align: center;} 
+label   {display: inline-block; color: black; margin: 2px auto; width:100px; }
+input    {display: inline-block; color: blue; margin: 2px auto;}
+button {margin: 5px auto;
+        display:block;}
+form {
+  width: 300px;
+  margin: 50px auto;
+}
+</style>
+<body>
+<h1>Aqua Link Online Device Configuration Page</h1>
+  <form>
+    <fieldset>
+      <div>
+        <label for="ssid">WiFi Name</label>      
+        <input value="" id="ssid" placeholder="Wifi SSID">
+      </div>
+      <div>
+        <label for="password">WiFi Password</label>
+        <input value="" id="password" placeholder="Wifi Password">
+      </div>
+	  <div>
+        <label for="firebaseHost">Firebase Host</label>
+        <input value="" id="firebaseHost" placeholder="Firebase Host">
+      </div>
+	  <div>
+        <label for="firebaseAuth">Firebase Auth</label>
+        <input value="" id="firebaseAuth" placeholder="Firebase Auth">
+      </div>
+      <div>
+        <button class="primary" id="savebtn" type="button" onclick="myFunction()">Save</button>
+      </div>
+    </fieldset>
+  </form>
+</body>
+<script>
+function myFunction()
+{
+ 
+  var ssid = document.getElementById("ssid").value;
+  var password = document.getElementById("password").value;
+  var firebaseHost = document.getElementById("firebaseHost").value;
+  var firebaseAuth = document.getElementById("firebaseAuth").value;
+  var data = {ssid:ssid, password:password, firebaseHost:firebaseHost, firebaseAuth:firebaseAuth};
+  var xhr = new XMLHttpRequest();
+  var url = "/settings";
+  xhr.onreadystatechange = function() {
+    if (this.readyState == 4 && this.status == 200) {
+      if(xhr.responseText != null){
+        console.log(xhr.responseText);
+      }
+    }
+  };
+  xhr.open("POST", url, true);
+  xhr.send(JSON.stringify(data));
+  alert("Configuration Saved. Please Restart the Device");
+};
+</script>
+</html>

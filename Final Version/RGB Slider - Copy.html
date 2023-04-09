@@ -1,0 +1,59 @@
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RGB Controller</title>
+  <style>
+    html {font-family: Arial; display: inline-block; text-align: center;}
+    h2 {font-size: 2.3rem;}
+    p {font-size: 1.9rem;}
+    body {max-width: 400px; margin:0px auto; padding-bottom: 25px;}
+    .sliderg { -webkit-appearance: none; margin: 1px; width: 360px; height: 10px; background: #66FF66;
+      outline: none; -webkit-transition: .2s; transition: opacity .2s;}
+    .sliderg::-webkit-slider-thumb {-webkit-appearance: none; appearance: none; width: 35px; height: 35px; background: #003249; cursor: pointer;}
+    .sliderg::-moz-range-thumb { width: 35px; height: 35px; background: #003249; cursor: pointer; } 
+	
+	    .sliderr { -webkit-appearance: none; margin: 1px; width: 360px; height: 10px; background: #ff3300;
+      outline: none; -webkit-transition: .2s; transition: opacity .2s;}
+    .sliderr::-webkit-slider-thumb {-webkit-appearance: none; appearance: none; width: 35px; height: 35px; background: #003249; cursor: pointer;}
+    .sliderr::-moz-range-thumb { width: 35px; height: 35px; background: #003249; cursor: pointer; }
+	
+	    .sliderb { -webkit-appearance: none; margin: 1px; width: 360px; height: 10px; background: #0033cc;
+      outline: none; -webkit-transition: .2s; transition: opacity .2s;}
+    .sliderb::-webkit-slider-thumb {-webkit-appearance: none; appearance: none; width: 35px; height: 35px; background: #003249; cursor: pointer;}
+    .sliderb::-moz-range-thumb { width: 35px; height: 35px; background: #003249; cursor: pointer; }
+	
+	    .sliderw { -webkit-appearance: none; margin: 1px; width: 360px; height: 10px; background: #f5f5f0;
+      outline: none; -webkit-transition: .2s; transition: opacity .2s;}
+    .sliderw::-webkit-slider-thumb {-webkit-appearance: none; appearance: none; width: 35px; height: 35px; background: #003249; cursor: pointer;}
+    .sliderw::-moz-range-thumb { width: 35px; height: 35px; background: #003249; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h2>RGB Controller</h2>
+  <p><span id="textWhite">White</span></p>
+  <p><input type="range" onchange="updateSliderPWM(this)" id="white" min="0" max="1023"   step="1" class="sliderw"></p>
+  <p><span id="textRed">Red</span></p>
+  <p><input type="range" onchange="updateSliderPWM(this)" id="red" min="0" max="1023"  step="1" class="sliderr"></p>
+  <p><span id="textGreen">Green</span></p>
+  <p><input type="range" onchange="updateSliderPWM(this)" id="green" min="0" max="1023"  step="1" class="sliderg"></p>
+  <p><span id="textBlue">Blue</span></p>
+  <p><input type="range" onchange="updateSliderPWM(this)" id="blue" min="0" max="1023"  step="1" class="sliderb"></p>
+<script>
+function updateSliderPWM(element) {
+  var cWhite = document.getElementById("white").value;
+  var cRed = document.getElementById("red").value;
+  var cGreen = document.getElementById("green").value;
+  var cBlue = document.getElementById("blue").value;
+  document.getElementById("textRed").innerHTML = cRed;
+  document.getElementById("textGreen").innerHTML = cGreen;
+  document.getElementById("textBlue").innerHTML = cBlue;
+  document.getElementById("textWhite").innerHTML = cWhite;
+  var data = {R:cRed, G:cGreen, B:cBlue, del:"50", modval:"4" };
+  console.log(data);
+  var xhr = new XMLHttpRequest();
+  xhr.open("POST", "http://192.168.29.159/postDelay", true);
+  xhr.send(JSON.stringify(data));
+}
+</script>
+</body>
+</html>

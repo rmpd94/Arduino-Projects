@@ -1,0 +1,1 @@
+Esp8266 board version 2.7.0
